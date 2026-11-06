@@ -34,6 +34,7 @@ Switch from anywhere with **Ctrl+Alt+C**, from the tray icon menu, or from the w
 
 ## Notes
 
+- **Look:** on Windows 11 22H2 or later the window is real frosted glass (acrylic) showing your desktop behind it. Windows shows it as solid while the window is not focused. Older Windows gets a painted glass background.
 - **Star Citizen:** select the camera once in the game's Comms/FOIP settings. If the game is already running when CamSwitch switches cameras, you may need to reselect it or toggle FOIP.
 - **Windows Hello:** it uses whichever Hello-capable camera is turned on. To sign in with face at the rig, set up face recognition there once (Settings → Accounts → Sign-in options → Facial recognition → Improve recognition, while sitting at the rig).
 - Settings are in `%APPDATA%\CamSwitch\config.json` and the log is `%APPDATA%\CamSwitch\camswitch.log`. Both open from the window. In the config you can rename the cameras (`DeskName`, `RigName`) and set the camera IDs if you replace one.

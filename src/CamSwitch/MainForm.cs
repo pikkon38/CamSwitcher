@@ -32,7 +32,8 @@ public sealed class MainForm : Form
 
     // background cache
     Bitmap? _bg;
-    Bitmap? _tint; // tiny copy of the camera picture, blurred by stretching
+    bool _glass; // real frosted glass (Windows 11 acrylic) showing the desktop behind
+    Bitmap? _frame;
     bool _bgDirty = true;
 
     Updater.Release? _update;
@@ -54,8 +55,8 @@ public sealed class MainForm : Form
         Icon = Icons.App;
         AutoScaleMode = AutoScaleMode.None;
         BackColor = Dark;
-        DoubleBuffered = true;
-        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
+        DoubleBuffered = false; // we buffer ourselves so the alpha channel reaches the glass
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
@@ -78,14 +79,22 @@ public sealed class MainForm : Form
     {
         var b = new Bitmap(ClientSize.Width, ClientSize.Height);
         using var g = Graphics.FromImage(b);
-        OnChanged();
-        OnPaint(new PaintEventArgs(g, ClientRectangle));
+        if (_bgDirty || _bg == null || _bg.Size != ClientSize) RebuildBackground();
+        g.DrawImageUnscaled(_bg!, 0, 0);
+        Draw(g);
         return b;
     }
 
     // ------------------------------------------------------------------ window plumbing
 
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("dwmapi.dll")] static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref Margins m);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr obj);
+    [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] static extern bool BitBlt(IntPtr dst, int x, int y, int w, int h, IntPtr src, int sx, int sy, int rop);
+    [StructLayout(LayoutKind.Sequential)] struct Margins { public int L, R, T, B; }
 
     protected override void OnHandleCreated(EventArgs e)
     {
@@ -94,12 +103,23 @@ public sealed class MainForm : Form
         {
             int dark = 1;
             DwmSetWindowAttribute(Handle, 20, ref dark, 4);            // dark title bar
-            int caption = TitleBar.R | (TitleBar.G << 8) | (TitleBar.B << 16);
-            DwmSetWindowAttribute(Handle, 35, ref caption, 4);         // title bar colour (Windows 11)
-            int text = 0x00FFFFFF;
-            DwmSetWindowAttribute(Handle, 36, ref text, 4);
+
+            // Windows 11 (22H2+): acrylic backdrop, the frosted glass that blurs whatever is behind the window.
+            if (Environment.OSVersion.Version.Build >= 22621)
+            {
+                var m = new Margins { L = -1, R = -1, T = -1, B = -1 };
+                DwmExtendFrameIntoClientArea(Handle, ref m);
+                int acrylic = 3;                                       // DWMSBT_TRANSIENTWINDOW
+                _glass = DwmSetWindowAttribute(Handle, 38, ref acrylic, 4) == 0;
+            }
+            if (!_glass)
+            {
+                int caption = TitleBar.R | (TitleBar.G << 8) | (TitleBar.B << 16);
+                DwmSetWindowAttribute(Handle, 35, ref caption, 4);     // title bar colour
+            }
+            _bgDirty = true;
         }
-        catch { }
+        catch { _glass = false; }
     }
 
     protected override void OnVisibleChanged(EventArgs e)
@@ -123,15 +143,6 @@ public sealed class MainForm : Form
     {
         if (IsDisposed) return;
         if (InvokeRequired) { BeginInvoke(OnChanged); return; }
-        var p = _sw.Preview;
-        if (p != null)
-        {
-            var t = new Bitmap(24, Math.Max(1, 24 * p.Height / Math.Max(1, p.Width)));
-            using (var g = Graphics.FromImage(t)) { g.InterpolationMode = InterpolationMode.HighQualityBilinear; g.DrawImage(p, 0, 0, t.Width, t.Height); }
-            _tint?.Dispose();
-            _tint = t;
-            _bgDirty = true;
-        }
         Invalidate();
     }
 
@@ -178,10 +189,37 @@ public sealed class MainForm : Form
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        var g = e.Graphics;
-        if (_bgDirty || _bg == null || _bg.Size != ClientSize) RebuildBackground();
-        g.DrawImageUnscaled(_bg!, 0, 0);
+        var size = ClientSize;
+        if (size.Width < 1 || size.Height < 1) return;
+        if (_bgDirty || _bg == null || _bg.Size != size) RebuildBackground();
+        if (_frame == null || _frame.Size != size) { _frame?.Dispose(); _frame = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb); }
 
+        using (var g = Graphics.FromImage(_frame))
+        {
+            g.CompositingMode = CompositingMode.SourceCopy;
+            g.DrawImageUnscaled(_bg!, 0, 0);
+            g.CompositingMode = CompositingMode.SourceOver;
+            Draw(g);
+        }
+
+        if (_glass)
+        {
+            // Copy with the alpha channel intact so the acrylic shows through the see-through parts.
+            var hdc = e.Graphics.GetHdc();
+            var mem = CreateCompatibleDC(hdc);
+            var hbm = _frame.GetHbitmap(Color.FromArgb(0));
+            var old = SelectObject(mem, hbm);
+            BitBlt(hdc, 0, 0, size.Width, size.Height, mem, 0, 0, 0x00CC0020);
+            SelectObject(mem, old);
+            DeleteObject(hbm);
+            DeleteDC(mem);
+            e.Graphics.ReleaseHdc(hdc);
+        }
+        else e.Graphics.DrawImageUnscaled(_frame, 0, 0);
+    }
+
+    void Draw(Graphics g)
+    {
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         g.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -524,6 +562,20 @@ public sealed class MainForm : Form
         _bg?.Dispose();
         _bg = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
 
+        if (_glass)
+        {
+            // The desktop shows through the acrylic; add a light green-grey tint and grain on top,
+            // a bit darker towards the bottom so white text stays readable.
+            using var g = Graphics.FromImage(_bg);
+            g.Clear(Color.Transparent);
+            using (var tint = new LinearGradientBrush(new Rectangle(0, 0, size.Width, size.Height),
+                       Color.FromArgb(70, 40, 62, 66), Color.FromArgb(125, 18, 26, 22), LinearGradientMode.Vertical))
+                g.FillRectangle(tint, 0, 0, size.Width, size.Height);
+            using var tb = new TextureBrush(_noise);
+            g.FillRectangle(tb, 0, 0, size.Width, size.Height);
+            return;
+        }
+
         // Paint a tiny picture and stretch it: stretching a tiny bitmap is a cheap, smooth blur.
         using var small = new Bitmap(36, Math.Max(2, 36 * size.Height / size.Width));
         using (var g = Graphics.FromImage(small))
@@ -542,12 +594,6 @@ public sealed class MainForm : Form
             blob(w * 0.95f, h * 0.30f, w * 0.65f, Color.FromArgb(200, 104, 128, 72));   // olive
             blob(w * 0.30f, h * 0.70f, w * 0.70f, Color.FromArgb(170, 58, 84, 60));     // forest
             blob(w * 0.85f, h * 0.95f, w * 0.55f, Color.FromArgb(200, 22, 30, 26));     // shade
-            if (_tint != null)
-            {
-                using var ia = new ImageAttributes();
-                ia.SetColorMatrix(new ColorMatrix { Matrix33 = 0.45f });
-                g.DrawImage(_tint, new Rectangle(0, 0, w, h), 0, 0, _tint.Width, _tint.Height, GraphicsUnit.Pixel, ia);
-            }
         }
         using (var g = Graphics.FromImage(_bg))
         {
