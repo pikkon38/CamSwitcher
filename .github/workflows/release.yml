@@ -1,0 +1,39 @@
+name: Release
+
+# Push a tag like v1.2.0 to build the installer and publish a GitHub release.
+# Installed copies of CamSwitch find it through "Check for updates".
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Version from tag
+        id: v
+        shell: pwsh
+        run: |
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          "version=$v" >> $env:GITHUB_OUTPUT
+      - name: Publish
+        run: dotnet publish src/CamSwitch/CamSwitch.csproj -c Release -o publish -p:Version=${{ steps.v.outputs.version }}
+      - name: Build installer
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=${{ steps.v.outputs.version }} "/DSourceExe=$PWD\publish\CamSwitch.exe" installer\CamSwitch.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Create release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" "dist\CamSwitch-Setup-${{ steps.v.outputs.version }}.exe" --title "CamSwitch ${{ steps.v.outputs.version }}" --generate-notes
