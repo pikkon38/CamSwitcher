@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -22,6 +24,20 @@ jobs:
         with:
           name: ui-preview
           path: ui-preview.png
+      - name: Publish UI preview to the ui-preview branch
+        if: github.event_name == 'push'
+        shell: pwsh
+        run: |
+          $dir = "$env:RUNNER_TEMP\preview"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item ui-preview.png $dir
+          Set-Location $dir
+          git init -q -b ui-preview
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add ui-preview.png
+          git commit -q -m "UI preview for ${{ github.sha }}"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" ui-preview
       - name: Build installer
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
