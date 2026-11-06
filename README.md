@@ -45,4 +45,4 @@ Switch from anywhere with **Ctrl+Alt+C**, from the tray icon menu, or from the w
 dotnet publish src/CamSwitch/CamSwitch.csproj -c Release -o publish
 ```
 
-This needs the .NET 8 SDK and builds on Windows or Linux. The installer is built with Inno Setup from `installer/CamSwitch.iss`. To release, push a tag like `v1.1.0` and the Release workflow builds the installer and publishes it.
+This needs the .NET 8 SDK and builds on Windows or Linux. The installer is built with Inno Setup from `installer/CamSwitch.iss`. To release, run the **Release** workflow from the Actions tab and enter a version such as `1.1.0`, or push a tag like `v1.1.0`. It builds the installer and publishes the release.
