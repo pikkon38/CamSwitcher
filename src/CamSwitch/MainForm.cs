@@ -62,7 +62,7 @@ public sealed class MainForm : Form
 
         var s = DeviceDpi / 96f;
         var work = Screen.FromPoint(Cursor.Position).WorkingArea;
-        ClientSize = new Size((int)(720 * s), Math.Min((int)(800 * s), (int)(work.Height * 0.92)));
+        ClientSize = new Size((int)(720 * s), Math.Min((int)(812 * s), (int)(work.Height * 0.92)));
         MinimumSize = new Size((int)(560 * s), (int)(420 * s));
 
         _sw.Changed += OnChanged;
@@ -259,7 +259,7 @@ public sealed class MainForm : Form
 
             // left column
             RowLabel(g, "Default camera", lx, top, rowH);
-            Segmented(g, "default", new RectangleF(lx + colW - 190 * s, top + 6 * s, 190 * s, 32 * s), [c.DeskName, c.RigName],
+            Segmented(g, "default", new RectangleF(lx + colW - 180 * s, top + 6 * s, 176 * s, 32 * s), [c.DeskName, c.RigName],
                 c.DefaultCamera == Cam.Desk ? 0 : 1, i => _sw.SetDefault(i == 0 ? Cam.Desk : Cam.Rig), small: true);
 
             RowLabel(g, "Check other camera after", lx, top + rowH, rowH);
