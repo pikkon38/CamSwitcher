@@ -35,6 +35,12 @@ public sealed class Switcher
         _timer.Tick += async (_, _) => await TickAsync();
     }
 
+    /// For the --screenshot preview only: fake a running state without touching any camera.
+    internal void Demo(string status, bool face, Bitmap? preview, Mode mode, Cam active)
+    {
+        Cfg.Mode = mode; Cfg.Active = active; Status = status; FaceSeen = face; Preview = preview;
+    }
+
     // ------------------------------------------------------------------ public operations
 
     public async Task StartAsync(Func<bool> confirmSitAtDesk, Action<string, bool> message)

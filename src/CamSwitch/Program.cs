@@ -33,6 +33,9 @@ static class Program
                 return Platform.InstallTask() ? 0 : 1;
             case "--remove-task":
                 return Platform.RemoveTask() ? 0 : 1;
+            case "--screenshot":
+                Screenshot(args.Length > 1 ? args[1] : "ui-preview.png");
+                return 0;
         }
 
         var background = arg == "--background";
@@ -67,6 +70,29 @@ static class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) => Log.Write("Fatal: " + e.ExceptionObject);
         Application.Run(new TrayApp(showWindow: !background));
         return 0;
+    }
+
+    /// Renders the window with made-up data, so the look can be checked without cameras.
+    static void Screenshot(string path)
+    {
+        var cfg = new Config { DefaultCamera = Cam.Desk };
+        var sw = new Switcher(cfg);
+        using var demo = new Bitmap(640, 360);
+        using (var g = Graphics.FromImage(demo))
+        {
+            using var bg = new System.Drawing.Drawing2D.LinearGradientBrush(new Rectangle(0, 0, 640, 360), Color.FromArgb(170, 150, 120), Color.FromArgb(60, 55, 50), 60f);
+            g.FillRectangle(bg, 0, 0, 640, 360);
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.FillEllipse(new SolidBrush(Color.FromArgb(200, 70, 80)), 200, 200, 240, 220);
+            g.FillEllipse(new SolidBrush(Color.FromArgb(225, 185, 160)), 270, 90, 100, 120);
+            using var pen = new Pen(Color.FromArgb(34, 197, 94), 3);
+            g.DrawRectangle(pen, 265, 95, 110, 110);
+        }
+        sw.Demo("you're in view", true, demo, Mode.Auto, Cam.Desk);
+        using var form = new MainForm(sw);
+        form.ShowUpdate(new Updater.Release("1.2.0", "", "", ""));
+        using var bmp = form.Snapshot();
+        bmp.Save(path, System.Drawing.Imaging.ImageFormat.Png);
     }
 
     static void WaitThenShow()

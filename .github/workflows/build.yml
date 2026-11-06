@@ -15,6 +15,13 @@ jobs:
           dotnet-version: 8.0.x
       - name: Publish
         run: dotnet publish src/CamSwitch/CamSwitch.csproj -c Release -o publish
+      - name: Render UI preview
+        shell: pwsh
+        run: Start-Process -Wait -FilePath publish\CamSwitch.exe -ArgumentList '--screenshot', "$PWD\ui-preview.png"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ui-preview
+          path: ui-preview.png
       - name: Build installer
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --no-progress -y }
